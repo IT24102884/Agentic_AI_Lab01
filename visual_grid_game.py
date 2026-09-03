@@ -1,6 +1,7 @@
 # visual_grid_game.py
 import random
 import tkinter as tk
+from agent import SearchAgent
 
 
 class VisualGridHuntGame:
@@ -38,17 +39,30 @@ class VisualGridHuntGame:
         self.score = 0
         self.steps = 0
         self.collision = False
+        self.agent_dir = 'Right'  # initial facing direction
 
     def get_percept(self) -> dict:
+        x, y = self.agent_pos
+        direction_offsets = {
+            'Up': (0, 1),
+            'Down': (0, -1),
+            'Left': (-1, 0),
+            'Right': (1, 0)
+        }
+        dx, dy = direction_offsets.get(self.agent_dir, (1, 0))
+        adjacent = (x + dx, y + dy)
+
+        wall_ahead = (
+            adjacent[0] < 0 or adjacent[0] >= self.width or
+            adjacent[1] < 0 or adjacent[1] >= self.height or
+            adjacent in self.walls
+        )
+        food_here = adjacent in self.food_positions
+
         return {
             'agent_pos': list(self.agent_pos),
-            'opponent_positions': [list(op) for op in self.opponents],
-            'smells_food': tuple(self.agent_pos) in self.food_positions,
-            'hit_wall': tuple(self.agent_pos) in self.walls,
-            'collision': self.collision,
-            'score': self.score,
-            'remaining_food': len(self.food_positions),
-
+            'wall_ahead': wall_ahead,
+            'food_here': food_here,
             'grid_size': (self.width, self.height),
             'walls': list(self.walls),
             'all_food': list(self.food_positions)
@@ -59,12 +73,16 @@ class VisualGridHuntGame:
         new_pos = list(self.agent_pos)
 
         if action == 'Up':
+            self.agent_dir = 'Up'
             new_pos[1] = min(self.height - 1, new_pos[1] + 1)
         elif action == 'Down':
+            self.agent_dir = 'Down'
             new_pos[1] = max(0, new_pos[1] - 1)
         elif action == 'Left':
+            self.agent_dir = 'Left'
             new_pos[0] = max(0, new_pos[0] - 1)
         elif action == 'Right':
+            self.agent_dir = 'Right'
             new_pos[0] = min(self.width - 1, new_pos[0] + 1)
 
         if tuple(new_pos) in self.walls:
@@ -105,9 +123,8 @@ class GridGameGUI:
 
         self.env = VisualGridHuntGame(width=width, height=height, num_food=num_food, num_opponents=num_opponents,
                                       custom_walls=walls)
-
-        from agent import SearchAgent
         self.agent = SearchAgent()
+        self.agent.active_algo = 'AStar'
 
         # Dynamically calculate cell size so the total canvas fits nicely within a 600x600 window ceiling
         max_canvas_dim = 600
@@ -172,8 +189,7 @@ class GridGameGUI:
 
         def step():
             if not self.env.is_done():
-                percept = self.env.get_percept()
-                action = self.agent.sense_and_act(percept)
+                action = self.agent.sense_and_act(self.env.get_percept())
                 self.env.execute_action(action)
 
                 self.draw_grid()
