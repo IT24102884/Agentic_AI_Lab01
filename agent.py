@@ -1,6 +1,7 @@
+# agent.py
 import random
 from collections import deque
-
+import heapq
 
 class GreedyGridAgent:
     """A simple agent that tries to move around systematically to clear the grid."""
@@ -9,101 +10,138 @@ class GreedyGridAgent:
         self.actions_pool = ['Up', 'Down', 'Left', 'Right']
 
     def sense_and_act(self, percept: dict) -> str:
+        # If standing directly on food, or just wander / move towards coordinates
+        pos = percept['agent_pos']
         # Simple heuristic or fallback random sweep
         return random.choice(self.actions_pool)
 
 
-class SimpleReflexAgent:
-    """
-    A Simple Reflex Agent that acts purely based on current percepts
-    using direct Condition-Action (if-then) rules without storing history.
-    """
-    def sense_and_act(self, percept: dict) -> str:
-        # Rule 1: IF food_here THEN Stay (eat food)
-        if percept.get('food_here', False) or percept.get('smells_food', False):
-            return 'Stay'
-        # Rule 2: IF wall_ahead THEN turn Right
-        if percept.get('wall_ahead', False) or percept.get('hit_wall', False):
-            return 'Right'
-        # Rule 3: ELSE move forward (Up)
-        return 'Up'
-
-
-class ModelBasedAgent:
-    """
-    A Model-Based Reflex Agent that maintains internal state / memory
-    to record history of percepts and actions, allowing it to detect loops and escape traps.
-    """
-    def __init__(self):
-        self.actions_pool = ['Up', 'Right', 'Down', 'Left']
-        self.action_index = 0
-        self.last_percept = None
-        self.last_action = None
-        self.history = []  # Internal memory state tracking (percept, action) pairs
-
-    def sense_and_act(self, percept: dict) -> str:
-        # Step 1: Update internal state (Transition & Sensor Model)
-        self.history.append({'percept': percept, 'last_action': self.last_action})
-
-        # Step 2: Check condition-action rules querying internal memory state
-        if percept.get('food_here', False) or percept.get('smells_food', False):
-            action = 'Stay'
-        elif percept.get('wall_ahead', False) or percept.get('hit_wall', False) or percept == self.last_percept:
-            self.action_index = (self.action_index + 1) % len(self.actions_pool)
-            action = self.actions_pool[self.action_index]
-        else:
-            action = self.actions_pool[self.action_index]
-
-        # Step 3: Record state for next turn
-        self.last_percept = dict(percept)
-        self.last_action = action
-        return action
-
-
 class SearchAgent:
-    """
-    A Problem-Solving Search Agent that uses Breadth-First Search (BFS)
-    to compute an optimal (shortest) sequence of actions offline.
-    """
-    def bfs_search(self, start_pos, goal_pos, walls, grid_size):
-        """
-        Performs Breadth-First Search (BFS) to find the shortest path from start_pos to goal_pos.
+    def __init__(self):
+        self.actions = ['Up', 'Down', 'Left', 'Right']
+        self.plan = []
+        self.active_algo = 'BFS'
 
-        :param start_pos: Tuple (x, y) starting coordinate
-        :param goal_pos: Tuple (x, y) goal coordinate
-        :param walls: List or set of (x, y) wall coordinates
-        :param grid_size: Tuple (width, height) specifying grid boundaries
-        :return: List of action strings (e.g., ['Up', 'Right', ...]) or None/[] if unreachable
-        """
+    def get_neighbors(self, state, grid_size, walls):
+        x, y = state
+        possible_moves = [
+            ('Up', (x, y + 1)),
+            ('Down', (x, y - 1)),
+            ('Left', (x - 1, y)),
+            ('Right', (x + 1, y))
+        ]
+        neighbors = []
         width, height = grid_size
         walls_set = set(walls)
 
-        if start_pos == goal_pos:
-            return []
+        for action, position in possible_moves:
+            nx, ny = position
 
-        moves = [
-            (0, 1, 'Up'),
-            (0, -1, 'Down'),
-            (-1, 0, 'Left'),
-            (1, 0, 'Right')
-        ]
+            # Check grid boundaries
+            if nx < 0 or nx >= width:
+                continue
 
-        queue = deque([(start_pos, [])])
-        visited = {start_pos}
+            if ny < 0 or ny >= height:
+                continue
 
-        while queue:
-            (curr_x, curr_y), path = queue.popleft()
+            # Check walls
+            if position in walls_set:
+                continue
 
-            if (curr_x, curr_y) == goal_pos:
+            neighbors.append((position, action))
+
+        return neighbors
+
+    def bfs_search(self, start, goal, grid_size, walls):
+        frontier = deque()
+        frontier.append((start, []))
+        reached = {start}
+
+        while frontier:
+            current, path = frontier.popleft()
+
+            if current == goal:
                 return path
 
-            for dx, dy, action in moves:
-                nx, ny = curr_x + dx, curr_y + dy
-                next_pos = (nx, ny)
+            for neighbor, action in self.get_neighbors(current, grid_size, walls):
+                if neighbor not in reached:
+                    reached.add(neighbor)
+                    new_path = path + [action]
+                    frontier.append((neighbor, new_path))
 
-                if 0 <= nx < width and 0 <= ny < height and next_pos not in walls_set:
-                    if next_pos not in visited:
-                        visited.add(next_pos)
-                        queue.append((next_pos, path + [action]))
+        return []
 
-        return None
+    def dfs_search(self, start, goal, grid_size, walls):
+        frontier = []
+        frontier.append((start, []))
+        reached = {start}
+
+        while frontier:
+            current, path = frontier.pop()
+
+            if current == goal:
+                return path
+
+            for neighbor, action in self.get_neighbors(current, grid_size, walls):
+                if neighbor not in reached:
+                    reached.add(neighbor)
+                    new_path = path + [action]
+                    frontier.append((neighbor, new_path))
+
+        return []
+
+    def ucs_search(self, start, goal, grid_size, walls):
+        frontier = []
+        counter = 0
+        heapq.heappush(frontier, (0, counter, start, []))
+        reached = {}
+
+        while frontier:
+            cost, _, current, path = heapq.heappop(frontier)
+
+            if current in reached and reached[current] <= cost:
+                continue
+
+            reached[current] = cost
+
+            if current == goal:
+                return path
+
+            for neighbor, action in self.get_neighbors(current, grid_size, walls):
+                new_cost = cost + 1
+                new_path = path + [action]
+
+                if neighbor not in reached or new_cost < reached[neighbor]:
+                    counter += 1
+                    heapq.heappush(frontier, (new_cost, counter, neighbor, new_path))
+
+        return []
+
+    def sense_and_act(self, percept: dict) -> str:
+        if not self.plan:
+            agent_pos = tuple(percept['agent_pos'])
+            all_food = percept['all_food']
+            grid_size = percept['grid_size']
+            walls = tuple(percept['walls'])
+
+            if not all_food:
+                return random.choice(self.actions)
+
+            # Find the closest food (using Manhattan distance as a simple heuristic)
+            def manhattan(p1, p2):
+                return abs(p1[0] - p2[0]) + abs(p1[1] - p2[1])
+
+            closest_food = min(all_food, key=lambda f: manhattan(agent_pos, f))
+
+            if self.active_algo == 'BFS':
+                self.plan = self.bfs_search(agent_pos, closest_food, grid_size, walls)
+            elif self.active_algo == 'DFS':
+                self.plan = self.dfs_search(agent_pos, closest_food, grid_size, walls)
+            elif self.active_algo == 'UCS':
+                self.plan = self.ucs_search(agent_pos, closest_food, grid_size, walls)
+            
+            if not self.plan:
+                return random.choice(self.actions)
+
+        return self.plan.pop(0)
+

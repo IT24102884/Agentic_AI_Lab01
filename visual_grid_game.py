@@ -1,7 +1,6 @@
 # visual_grid_game.py
 import random
 import tkinter as tk
-from agent import SimpleReflexAgent, ModelBasedAgent
 
 
 class VisualGridHuntGame:
@@ -11,7 +10,6 @@ class VisualGridHuntGame:
         self.width = width
         self.height = height
         self.agent_pos = [0, 0]  # Starting position (x, y)
-        self.agent_facing = 'Up'  # Current facing direction ('Up', 'Down', 'Left', 'Right')
 
         if custom_walls is not None:
             self.walls = set(custom_walls)
@@ -42,48 +40,23 @@ class VisualGridHuntGame:
         self.collision = False
 
     def get_percept(self) -> dict:
-        """
-        Partially Observable Percept:
-        No longer returns global coordinates (agent_pos).
-        Returns local booleans based on checking adjacent cells in facing direction.
-        """
-        x, y = self.agent_pos
-        dx, dy = 0, 0
-        if self.agent_facing == 'Up':
-            dy = 1
-        elif self.agent_facing == 'Down':
-            dy = -1
-        elif self.agent_facing == 'Left':
-            dx = -1
-        elif self.agent_facing == 'Right':
-            dx = 1
-
-        target_pos = (x + dx, y + dy)
-        wall_ahead = (
-            target_pos[0] < 0 or target_pos[0] >= self.width or
-            target_pos[1] < 0 or target_pos[1] >= self.height or
-            target_pos in self.walls
-        )
-
-        food_here = tuple(self.agent_pos) in self.food_positions
-
         return {
-            'wall_ahead': wall_ahead,
-            'food_here': food_here,
-            'smells_food': food_here,
+            'agent_pos': list(self.agent_pos),
             'opponent_positions': [list(op) for op in self.opponents],
+            'smells_food': tuple(self.agent_pos) in self.food_positions,
             'hit_wall': tuple(self.agent_pos) in self.walls,
             'collision': self.collision,
             'score': self.score,
-            'remaining_food': len(self.food_positions)
+            'remaining_food': len(self.food_positions),
+
+            'grid_size': (self.width, self.height),
+            'walls': list(self.walls),
+            'all_food': list(self.food_positions)
         }
 
     def execute_action(self, action: str):
         self.steps += 1
         new_pos = list(self.agent_pos)
-
-        if action in ['Up', 'Down', 'Left', 'Right']:
-            self.agent_facing = action
 
         if action == 'Up':
             new_pos[1] = min(self.height - 1, new_pos[1] + 1)
@@ -133,8 +106,8 @@ class GridGameGUI:
         self.env = VisualGridHuntGame(width=width, height=height, num_food=num_food, num_opponents=num_opponents,
                                       custom_walls=walls)
 
-        # Agent selection state
-        self.agent_type = tk.StringVar(value="ModelBasedAgent")
+        from agent import SearchAgent
+        self.agent = SearchAgent()
 
         # Dynamically calculate cell size so the total canvas fits nicely within a 600x600 window ceiling
         max_canvas_dim = 600
@@ -142,12 +115,6 @@ class GridGameGUI:
 
         canvas_w = self.env.width * self.cell_size
         canvas_h = self.env.height * self.cell_size
-
-        # Control Panel for Agent Selection
-        ctrl_frame = tk.Frame(root)
-        ctrl_frame.pack(pady=5)
-        tk.Label(ctrl_frame, text="Select Agent Type:", font=("Arial", 11, "bold")).pack(side=tk.LEFT, padx=5)
-        tk.OptionMenu(ctrl_frame, self.agent_type, "SimpleReflexAgent", "ModelBasedAgent").pack(side=tk.LEFT, padx=5)
 
         self.canvas = tk.Canvas(root, width=canvas_w, height=canvas_h, bg="white")
         self.canvas.pack()
@@ -203,15 +170,10 @@ class GridGameGUI:
     def run_loop(self):
         self.btn.config(state="disabled")
 
-        if self.agent_type.get() == "SimpleReflexAgent":
-            agent = SimpleReflexAgent()
-        else:
-            agent = ModelBasedAgent()
-
         def step():
             if not self.env.is_done():
                 percept = self.env.get_percept()
-                action = agent.sense_and_act(percept)
+                action = self.agent.sense_and_act(percept)
                 self.env.execute_action(action)
 
                 self.draw_grid()
