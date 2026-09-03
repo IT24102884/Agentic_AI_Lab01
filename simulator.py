@@ -1,23 +1,19 @@
 # simulator.py
 from grid_game import GridHuntGame
-from agent import SimpleReflexAgent, ModelBasedAgent
+from agent import GreedyGridAgent
 
-
-def run_agent_simulation(agent_cls, name):
+def run_grid_hunt():
     env = GridHuntGame()
-    agent = agent_cls()
+    agent = GreedyGridAgent()
 
-    print(f"\n=== Simulation: {name} ===")
+    print("=== UC Berkeley Style Small Grid Hunt Started ===")
     while not env.is_done():
         percept = env.get_percept(agent)
         action = agent.sense_and_act(percept)
         env.execute_action(agent, action)
-        print(f"Step {env.steps:2d} | Percept: wall_ahead={percept.get('wall_ahead')}, food_here={percept.get('food_here')} | Action: {action:5s} | Score: {env.score:3d} | Food Left: {percept['remaining_food']}")
+        print(f"Pos: {percept['agent_pos']} | Food Left: {percept['remaining_food']} | Score: {percept['score']}")
 
-    print(f"End {name}: Final Score: {env.score} after {env.steps} steps.")
-
+    print(f"\nGame Over! Final Score: {env.score} after {env.steps} steps.")
 
 if __name__ == "__main__":
-    print("=== Lab 02 Agent Simulation ===")
-    run_agent_simulation(SimpleReflexAgent, "SimpleReflexAgent (No Memory)")
-    run_agent_simulation(ModelBasedAgent, "ModelBasedAgent (With Internal Memory State)")
+    run_grid_hunt()
